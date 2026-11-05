@@ -1,3 +1,7 @@
+### My Notes
+CHECKLIST.md
+pjm_power_market_project_plan.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -218,3 +222,34 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+### Project-specific
+# PJM Data Miner data is for internal use only -- never commit downloaded data.
+data/**
+!data/*/
+!data/**/.gitkeep
+*.parquet
+# Local config holds the PJM API key
+config/config.yaml
+# Any other tabular/binary data exports (e.g. manual Data Miner CSV downloads saved outside data/)
+*.csv
+*.xlsx
+*.xls
+*.feather
+*.h5
+*.zip
+*.gz
+
+### Editor / tool settings (personal)
+.vscode/
+.idea/
+.claude/
+
+### OS / temp files
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.DS_Store
+*.tmp
+*.bak
+~$*

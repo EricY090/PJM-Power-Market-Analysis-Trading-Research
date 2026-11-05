@@ -1,0 +1,33 @@
+# Copy this file to config/config.yaml and fill in your API key.
+# config/config.yaml is git-ignored; never commit your key.
+# The key can also be supplied via the PJM_API_KEY environment variable, which takes precedence.
+
+pjm:
+  api_key: "YOUR_PJM_API_SUBSCRIPTION_KEY"
+  base_url: "https://api.pjm.com/api/v1"
+  max_requests_per_minute: 6        # PJM non-member limit
+  rows_per_request: 50000           # Data Miner maximum page size
+
+market:
+  pricing_node_id: 51288            # PJM Western Hub
+  pricing_node_name: "WESTERN HUB"
+  load_area: "RTO"                  # PJM RTO total load
+  timezone: "America/New_York"      # PJM market time (EPT)
+
+period:
+  start: "2023-01-01"
+  end: "2025-12-31"                 # main research window, inclusive (EDA, train, validation, test)
+
+split:
+  train_end: "2024-12-31"           # Train: 2023-2024
+  validation_end: "2025-06-30"      # Validation: 2025 H1; Test: 2025 H2 (through period.end)
+
+final_holdout:                      # untouched until model, thresholds and costs are frozen; used once
+  start: "2026-01-01"
+  end: "2026-10-31"                 # data pull covers period.start -> final_holdout.end
+
+paths:
+  raw: "data/raw"
+  interim: "data/interim"
+  processed: "data/processed"
+  figures: "reports/figures"
