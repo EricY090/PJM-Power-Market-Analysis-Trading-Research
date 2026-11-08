@@ -13,10 +13,12 @@ market:
   pricing_node_name: "WESTERN HUB"
   load_area: "RTO"                  # PJM RTO total load
   timezone: "America/New_York"      # PJM market time (EPT)
+  decision_time_ept: "10:30"        # on D-1: DA bid deadline (conservative); only data known by then is tradable
 
 period:
   start: "2023-01-01"
   end: "2025-12-31"                 # main research window, inclusive (EDA, train, validation, test)
+  lookback_days: 31                 # extra history downloaded before start, for rolling features
 
 split:
   train_end: "2024-12-31"           # Train: 2023-2024

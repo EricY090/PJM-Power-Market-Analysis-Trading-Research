@@ -13,4 +13,5 @@ matplotlib>=3.8
 
 # Workflow
 jupyter>=1.0
+nbstripout>=0.7     # strips notebook outputs on commit (PJM data must not be published)
 pytest>=7.4
