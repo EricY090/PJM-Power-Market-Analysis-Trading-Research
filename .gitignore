@@ -253,3 +253,8 @@ desktop.ini
 *.tmp
 *.bak
 ~$*
+
+### Outputs derived from PJM data (not redistributable without a PJM licence)
+reports/figures/*
+!reports/figures/.gitkeep
+reports/*.md
