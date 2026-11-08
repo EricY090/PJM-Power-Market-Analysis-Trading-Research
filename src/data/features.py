@@ -39,6 +39,7 @@ from src.analysis.regimes import fit_load_thresholds, load_regime, season
 log = logging.getLogger(__name__)
 
 SPREAD_CLIP = 100.0   # $/MWh; trailing spread means use clipped values so one storm (e.g. Elliott) can't dominate
+MIN_DAY_SHARE = 0.7   # a trailing window needs data on >= 70% of its days (5 of 7, 21 of 30)
 
 
 # --------------------------------------------------------------------------- #
@@ -162,13 +163,20 @@ def _daily(df: pd.DataFrame, col: str) -> pd.DataFrame:
     return d.reindex(full)
 
 
+def _min_days(window: int) -> int:
+    return int(np.ceil(window * MIN_DAY_SHARE))
+
+
 def _trailing_mean_std(daily: pd.DataFrame, window: int, lag_days: int) -> tuple[pd.Series, pd.Series]:
-    """Mean and std over ``window`` days ending ``lag_days`` before D (all hours pooled)."""
+    """Mean and sample std over ``window`` days ending ``lag_days`` before D (all hours pooled).
+
+    E.g. window=7, lag_days=2 covers days D-8 .. D-2. Requires data on >= MIN_DAY_SHARE of the days.
+    """
     r = daily[["sum", "sumsq", "n"]].fillna(0).rolling(window, min_periods=window).sum().shift(lag_days)
-    full_days = daily["n"].notna().astype(int).rolling(window, min_periods=window).sum().shift(lag_days)
+    days_with_data = (daily["n"].fillna(0) > 0).astype(int).rolling(window, min_periods=window).sum().shift(lag_days)
     mean = r["sum"] / r["n"]
     var = (r["sumsq"] - r["n"] * mean**2) / (r["n"] - 1)
-    ok = full_days >= window * 0.8            # require most of the window to have data
+    ok = days_with_data >= _min_days(window)
     return mean.where(ok), np.sqrt(var.clip(lower=0)).where(ok)
 
 
@@ -179,11 +187,15 @@ def _by_date(df: pd.DataFrame, series: pd.Series) -> np.ndarray:
 # --------------------------------------------------------------------------- #
 # Builder
 # --------------------------------------------------------------------------- #
-def build_features(hourly: pd.DataFrame, load_thresholds: np.ndarray) -> pd.DataFrame:
+def build_features(
+    hourly: pd.DataFrame, load_thresholds: np.ndarray, actual_load_thresholds: np.ndarray | None = None,
+) -> pd.DataFrame:
     """Build all registered features for every hour of ``hourly``.
 
     ``hourly`` must be the cleaned hourly table *including* enough history before the first
-    modelled day (the lookback month). ``load_thresholds`` come from the training period.
+    modelled day (the lookback month). ``load_thresholds`` (forecast load) and
+    ``actual_load_thresholds`` (ex-post regime; defaults to the forecast ones) come from the
+    training period.
     """
     df = hourly.sort_values("timestamp_utc").reset_index(drop=True).copy()
     out = df[KEY_COLUMNS].copy()
@@ -237,7 +249,8 @@ def build_features(hourly: pd.DataFrame, load_thresholds: np.ndarray) -> pd.Data
     out["spread_d2_daily_mean"] = _by_date(df, (sp_daily["sum"] / sp_daily["n"]).shift(2))
 
     clipped = df[["market_date", "hour_ending"]].assign(s=df["da_rt_spread"].clip(-SPREAD_CLIP, SPREAD_CLIP))
-    out["spread_same_hour_7d_mean"] = _lookup(df, _hour_matrix(clipped, "s").shift(2).rolling(7, min_periods=5).mean())
+    out["spread_same_hour_7d_mean"] = _lookup(
+        df, _hour_matrix(clipped, "s").shift(2).rolling(7, min_periods=_min_days(7)).mean())
     c_daily = _daily(clipped, "s")
     out["spread_7d_mean"] = _by_date(df, _trailing_mean_std(c_daily, 7, 2)[0])
     out["spread_30d_mean"] = _by_date(df, _trailing_mean_std(c_daily, 30, 2)[0])
@@ -249,8 +262,8 @@ def build_features(hourly: pd.DataFrame, load_thresholds: np.ndarray) -> pd.Data
     vals = df.groupby("market_date")["da_rt_spread"].apply(lambda s: s.to_numpy()).reindex(day_index)
     for i, day in enumerate(day_index):
         window = vals.iloc[max(0, i - 8): i - 1] if i >= 2 else []   # days D-8 .. D-2
-        arrs = [a for a in window if isinstance(a, np.ndarray)]
-        if len(arrs) >= 6:
+        arrs = [a for a in window if isinstance(a, np.ndarray) and len(a)]
+        if len(arrs) >= _min_days(7):
             pooled = np.concatenate(arrs)
             med[day], share[day] = np.nanmedian(pooled), np.nanmean(pooled > 0)
     out["spread_7d_median"] = df["market_date"].map(pd.Series(med)).to_numpy()
@@ -267,7 +280,8 @@ def build_features(hourly: pd.DataFrame, load_thresholds: np.ndarray) -> pd.Data
     out["rt_lmp"] = df["rt_lmp"]
     out["actual_load"] = df["actual_load"]
     out["load_forecast_error"] = err
-    out["load_regime_actual"] = load_regime(df["actual_load"], load_thresholds)   # same cut points, ex-post
+    act_thr = load_thresholds if actual_load_thresholds is None else actual_load_thresholds
+    out["load_regime_actual"] = load_regime(df["actual_load"], act_thr)
 
     missing = set(out.columns) - set(KEY_COLUMNS) - set(FEATURES)
     if missing:
@@ -280,8 +294,10 @@ def run(cfg: dict[str, Any] | None = None) -> pd.DataFrame:
 
     cfg = cfg or load_config()
     hourly = pd.read_parquet(cfg["paths"]["processed"] / "hourly.parquet")     # holdout is NOT read here
-    thresholds = fit_load_thresholds(hourly.loc[hourly["period"] == "train", "forecast_load"])
-    feats = build_features(hourly, thresholds)
+    train = hourly["period"] == "train"
+    thresholds = fit_load_thresholds(hourly.loc[train, "forecast_load"])
+    actual_thresholds = fit_load_thresholds(hourly.loc[train, "actual_load"])   # same as Phase 2
+    feats = build_features(hourly, thresholds, actual_thresholds)
     path = Path(cfg["paths"]["processed"]) / "features.parquet"
     feats.to_parquet(path, index=False)
     log.info("saved %s: %d rows, %d tradable features", path.name, len(feats), len(tradable_features()))

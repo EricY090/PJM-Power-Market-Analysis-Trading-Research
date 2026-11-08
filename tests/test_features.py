@@ -142,6 +142,23 @@ def test_spread_trailing_mean_is_clipped():
     assert later < 100 / 7 + 10        # one clipped day of +$100 cannot push a 7-day mean far
 
 
+def test_trailing_window_requires_enough_days_with_data():
+    """Days whose values are all missing don't count toward the 5-of-7 minimum."""
+    df = synthetic_hourly(start="2024-09-01", end="2024-10-10")
+    day = pd.Timestamp("2024-09-25")
+    # wipe the forecast on 3 of the 7 days D-8..D-2 -> only 4 days of forecast error remain
+    gone = df["market_date"].isin([day - pd.Timedelta(days=k) for k in (3, 4, 5)])
+    df.loc[gone, "forecast_load"] = np.nan
+    feats = build_features(finalize(df), THRESHOLDS)
+    on_day = feats.loc[feats["market_date"] == day]
+    assert on_day["fc_err_7d_mean"].isna().all()
+    # with only 2 days wiped (5 remain) the feature is defined again
+    df2 = synthetic_hourly(start="2024-09-01", end="2024-10-10")
+    df2.loc[df2["market_date"].isin([day - pd.Timedelta(days=k) for k in (3, 4)]), "forecast_load"] = np.nan
+    feats2 = build_features(finalize(df2), THRESHOLDS)
+    assert feats2.loc[feats2["market_date"] == day, "fc_err_7d_mean"].notna().all()
+
+
 def test_nerc_holidays():
     hol = set(nerc_holidays("2022-12-01", "2025-12-31").date)
     for d in ("2022-12-26", "2023-01-02", "2023-07-04", "2024-05-27", "2024-09-02", "2024-11-28", "2025-12-25"):
