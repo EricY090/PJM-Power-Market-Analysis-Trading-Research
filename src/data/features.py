@@ -172,8 +172,10 @@ def _trailing_mean_std(daily: pd.DataFrame, window: int, lag_days: int) -> tuple
 
     E.g. window=7, lag_days=2 covers days D-8 .. D-2. Requires data on >= MIN_DAY_SHARE of the days.
     """
-    r = daily[["sum", "sumsq", "n"]].fillna(0).rolling(window, min_periods=window).sum().shift(lag_days)
-    days_with_data = (daily["n"].fillna(0) > 0).astype(int).rolling(window, min_periods=window).sum().shift(lag_days)
+    # min_periods=1: windows reaching back before the first day of data count those days as "no data",
+    # and the days_with_data rule below decides validity (same rule everywhere)
+    r = daily[["sum", "sumsq", "n"]].fillna(0).rolling(window, min_periods=1).sum().shift(lag_days)
+    days_with_data = (daily["n"].fillna(0) > 0).astype(int).rolling(window, min_periods=1).sum().shift(lag_days)
     mean = r["sum"] / r["n"]
     var = (r["sumsq"] - r["n"] * mean**2) / (r["n"] - 1)
     ok = days_with_data >= _min_days(window)

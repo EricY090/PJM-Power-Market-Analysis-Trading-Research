@@ -226,6 +226,78 @@ def error_bucket_panels(tbl: pd.DataFrame, labels: list[str], title: str, subtit
     return _finish(fig, axes, title, subtitle, path)
 
 
+def risk_decile_bars(tbl: pd.DataFrame, title: str, subtitle: str, path=None, note: str = SOURCE_NOTE):
+    """Realized mean |spread| by decile of predicted risk (one series, ordered categories)."""
+    fig, ax = plt.subplots(figsize=(9, 4.4))
+    x = tbl["decile"].astype(int).to_numpy()
+    ax.bar(x, tbl["mean_abs_spread"], color=BLUE, width=0.72, edgecolor=SURFACE, linewidth=2)
+    ax.plot(x, tbl["median_abs_spread"], "o", color=INK_2, markersize=6, markeredgecolor=SURFACE,
+            markeredgewidth=2, label="Median |spread|")
+    for xi in (x[0], x[-1]):
+        v = tbl.loc[tbl["decile"].astype(int) == xi, "mean_abs_spread"].iloc[0]
+        ax.text(xi, v + 1, money(v, 0), ha="center", va="bottom", fontsize=9, color=INK)
+    ax.set_xticks(x)
+    ax.set_xlabel("Predicted-risk decile (1 = calmest hours, 10 = riskiest)")
+    ax.set_ylabel("Realized |RT − DA| ($/MWh)")
+    ax.legend(handles=[mpl.patches.Patch(color=BLUE, label="Mean |spread|"), ax.lines[0]], loc="upper left")
+    ax.grid(axis="x", visible=False)
+    return _finish(fig, ax, title, subtitle, path, note)
+
+
+def reliability_plot(tbl: pd.DataFrame, title: str, subtitle: str, path=None, note: str = SOURCE_NOTE, base_rate=None):
+    """Predicted vs observed P(RT > DA) by predicted-probability decile; diagonal = perfect calibration."""
+    fig, ax = plt.subplots(figsize=(6.4, 5))
+    lim = (0, max(0.6, tbl[["mean_predicted", "observed_rate"]].to_numpy().max() * 1.15))
+    ax.plot(lim, lim, color=AXIS, linewidth=1)
+    ax.text(lim[1] * 0.97, lim[1] * 0.93, "perfect calibration", ha="right", fontsize=8.5, color=MUTED, rotation=38)
+    if base_rate is not None:
+        ax.axhline(base_rate, color=ORANGE, linewidth=1.2)
+        ax.text(lim[0] + 0.01, base_rate + 0.01, f"observed base rate {base_rate:.0%}", fontsize=8.5, color=INK_2)
+    ax.plot(tbl["mean_predicted"], tbl["observed_rate"], "o-", color=BLUE, markersize=7,
+            markeredgecolor=SURFACE, markeredgewidth=2)
+    ax.set_xlim(lim); ax.set_ylim(lim)
+    ax.xaxis.set_major_formatter(mpl.ticker.PercentFormatter(1.0))
+    ax.yaxis.set_major_formatter(mpl.ticker.PercentFormatter(1.0))
+    ax.set_xlabel("Predicted P(RT > DA), decile mean")
+    ax.set_ylabel("Observed share of hours with RT > DA")
+    return _finish(fig, ax, title, subtitle, path, note)
+
+
+def fold_stability(tbl: pd.DataFrame, title: str, subtitle: str, path=None, note: str = SOURCE_NOTE):
+    """Two panels: direction AUC and risk Spearman per evaluation block (no dual axis)."""
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
+    x = np.arange(len(tbl))
+    for ax, col, ref, ttl, lo in ((axes[0], "direction_auc", 0.5, "Direction model: ROC-AUC", 0.4),
+                                  (axes[1], "risk_spearman", 0.0, "Risk model: rank correlation with |spread|", 0.0)):
+        colors = [ORANGE if lbl.startswith("Validation") else BLUE for lbl in tbl["block"]]
+        ax.bar(x, tbl[col] - lo, bottom=lo, color=colors, width=0.62, edgecolor=SURFACE, linewidth=2)
+        ax.axhline(ref, color=INK_2, linewidth=1)
+        for xi, v in zip(x, tbl[col]):
+            ax.text(xi, v + 0.01, f"{v:.2f}", ha="center", va="bottom", fontsize=8.5, color=INK)
+        ax.set_xticks(x, tbl["block"], fontsize=8.5)
+        ax.set_title(ttl, fontsize=10.5)
+        ax.set_ylim(lo, max(0.75, tbl[col].max() + 0.08))
+        ax.grid(axis="x", visible=False)
+    fig.tight_layout()
+    return _finish(fig, axes, title, subtitle, path, note)
+
+
+def importance_panels(panels: dict[str, pd.DataFrame], title: str, subtitle: str, path=None, note: str = SOURCE_NOTE):
+    """Grouped permutation importance, one panel per model; error bars = std over repeats."""
+    fig, axes = plt.subplots(1, len(panels), figsize=(11, 3.8))
+    for ax, (name, tbl) in zip(np.atleast_1d(axes), panels.items()):
+        t = tbl.sort_values("importance")
+        y = np.arange(len(t))
+        ax.barh(y, t["importance"], xerr=t["std"], color=BLUE, height=0.6, edgecolor=SURFACE, linewidth=2,
+                error_kw={"ecolor": INK_2, "elinewidth": 1, "capsize": 3})
+        ax.axvline(0, color=INK_2, linewidth=1)
+        ax.set_yticks(y, [f"{g} ({n})" for g, n in zip(t["group"], t["n_features"])])
+        ax.set_title(name, fontsize=10.5)
+        ax.grid(axis="y", visible=False)
+    fig.tight_layout()
+    return _finish(fig, axes, title, subtitle, path, note)
+
+
 def lift_panels(panels: dict[str, pd.DataFrame], title: str, subtitle: str, path=None):
     """Small multiples: lift of extreme RT>DA (red) and RT<DA (blue) spread hours per category."""
     fig, axes = plt.subplots(1, len(panels), figsize=(11, 4.4), sharey=True)

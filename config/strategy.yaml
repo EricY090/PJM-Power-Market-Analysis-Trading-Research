@@ -1,0 +1,78 @@
+frozen_at: '2026-11-08'
+primary_signal: S4_prob_threshold
+primary_params:
+  upper: 0.7
+  lower: 0.3
+position_convention: +1 = long spread (earns RT - DA, ~DEC); -1 = short spread (earns
+  DA - RT, ~INC); 1 MW per hour
+decision_time: 10:30 EPT on D-1; tradable features only (see src/data/features.py)
+cost_per_mwh: 0.5
+selection:
+  set: 'out-of-sample predictions: 2024 Q1-Q4 walk-forward folds + 2025 H1 validation
+    (test never used)'
+  criterion: max Sharpe-like of daily net P&L, coverage >= 25% of hours
+  grid:
+    S4_prob_threshold:
+    - upper: 0.55
+      lower: 0.45
+    - upper: 0.6
+      lower: 0.4
+    - upper: 0.65
+      lower: 0.35
+    - upper: 0.7
+      lower: 0.3
+    S5_risk_filtered_short:
+    - percentile: 30
+    - percentile: 40
+    - percentile: 50
+    - percentile: 60
+    - percentile: 70
+    - percentile: 80
+    - percentile: 90
+    S6_risk_sized_short:
+    - reference_percentile: 10
+    - reference_percentile: 25
+    - reference_percentile: 50
+  results_file: 'reports/phase5_selection_results.csv (git-ignored: derived from PJM
+    data)'
+models:
+  fit_periods:
+  - train
+  - validation
+  fit_rows: 21353
+  fit_window: 2023-01-01 -> 2025-06-30
+  choices:
+    direction:
+      model: logistic
+      C: 0.01
+    magnitude:
+      model: ridge
+      alpha: 1000.0
+      target_clip: 100.0
+    risk:
+      model: ridge
+      alpha: 1000.0
+      target: log1p(|spread|)
+signals:
+  S0_flat: {}
+  S1_always_long: {}
+  S2_always_short: {}
+  S3_rule_based:
+    flat_load_regimes:
+    - High
+    - Extreme
+    flat_hours:
+    - 17
+    - 18
+    - 19
+    - 20
+    - 21
+  S4_prob_threshold:
+    upper: 0.7
+    lower: 0.3
+  S5_risk_filtered_short:
+    percentile: 40.0
+    cutoff_log1p_abs_spread: 1.7279555526308055
+  S6_risk_sized_short:
+    reference_percentile: 10.0
+    reference_abs_spread: 2.4256486997413154
