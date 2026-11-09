@@ -121,12 +121,17 @@ def positions_for(strategy: dict, signal: str, rows: pd.DataFrame, models) -> pd
 
 
 if __name__ == "__main__":
+    import argparse
     import warnings
 
     from src.config import load_config
 
+    ap = argparse.ArgumentParser(description="Freeze a strategy: run the selection, refit models, save the result.")
+    ap.add_argument("--out", type=Path, default=STRATEGY_PATH, help="strategy file to write")
+    args = ap.parse_args()
     warnings.filterwarnings("ignore", category=UserWarning)
     F = pd.read_parquet(load_config()["paths"]["processed"] / "features.parquet")
-    s = freeze(F)
+    s = freeze(F, args.out)
+    print(f"saved {args.out}")
     print("primary:", s["primary_signal"], s["primary_params"])
     print(yaml.safe_dump(s["signals"], sort_keys=False))

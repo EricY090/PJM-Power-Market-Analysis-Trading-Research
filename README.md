@@ -14,8 +14,9 @@ The goal is a disciplined research workflow, not a production strategy:
 
 > market question → data pipeline → exploratory analysis → features → models → signal → backtest → robustness
 
-**Status:** stages 1–5 complete; the strategy was frozen and committed **before** the test period was
-opened. Backtest (stage 6) and robustness checks (stage 7) are next.
+**Status:** stages 1–6 complete. The strategy was frozen and committed **before** the test period
+(2025 H2) was opened, then evaluated on it once. Robustness checks (stage 7) and the single run on the
+2026 holdout are next.
 
 ## Key findings so far
 
@@ -31,8 +32,13 @@ opened. Backtest (stage 6) and robustness checks (stage 7) are next.
 * **Net of trading costs, the spread looks close to efficiently priced.** Out of sample, the average spread
   was smaller than an assumed $0.50/MWh cost. Filtering trades by predicted risk did not create an edge.
   Only a strict "short when the model is most confident RT < DA" rule was marginally positive, and it was
-  not consistent across periods. It is the frozen strategy for the test period; expectations were written
-  down in advance.
+  not consistent across periods. That rule was frozen as the strategy, with expectations written down in advance.
+* **On the untouched test period, the frozen strategy made money, but mostly because the market moved
+  its way.** In 2025 H2, RT ran persistently below DA (average −$2.7/MWh, against about −$0.3 before), so
+  every short-side strategy profited and always-long lost heavily. The frozen strategy earned more per MWh than
+  simply shorting every hour, with a smaller drawdown, but less in total. Its average daily P&L was not
+  statistically different from zero, and most of it came from five days. Conclusion: no robust edge beyond the
+  market's own drift; the model's contribution was better hour selection.
 
 ## Why power markets
 
@@ -113,11 +119,15 @@ benchmark), a domain rule (stay out of spike-prone hours), the plan's probabilit
 risk-filtered short, and a risk-sized short. Thresholds were selected on 18 months of out-of-sample
 predictions with a criterion declared before the run (Sharpe-like ratio of daily P&L net of cost, minimum
 coverage). The selected strategy, every alternative's settings, the refit models' cut-offs and the cost
-assumption were **frozen in `config/strategy.yaml` and committed before the test period was opened**.
+assumption were **saved in `config/strategy.yaml` before the test period was opened**, and committed so there
+is a timestamped record. The backtest reads everything from that file.
 
-### 6. Backtest
-Hypothetical P&L = position × (RT − DA) − cost × |position| on the test period, for every frozen signal,
-with cumulative P&L, drawdown, hit rate and breakdowns by month, hour and regime.
+### 6. Backtest: `src/backtest/run.py`, `metrics.py`, notebook 05
+Every frozen signal is evaluated **once** on the test period (2025 H2). Hypothetical P&L = position ×
+(RT − DA) − cost × |position|, at 1 MW per hour. Metrics: net P&L, P&L per MWh, hit rate, Sharpe-like
+ratio, maximum drawdown, profit concentration, a bootstrap confidence interval for mean daily P&L, and
+breakdowns by month, hour block and load regime. Results are compared against the benchmarks (flat, always
+long, always short) as well as each other.
 
 ### 7. Robustness
 Cost sensitivity ($0–2/MWh), threshold sensitivity, stability across sub-periods and regimes, and
@@ -136,8 +146,8 @@ feature-group ablation. Then a single run on the 2026 holdout.
   test once → holdout once.
 * **Benchmarks and costs everywhere:** every model is compared with a constant baseline, and every signal
   with flat / always-long / always-short, net of an explicit cost assumption.
-* **Tests:** 71 offline tests (no API calls) cover DST handling, forecast-vintage selection, the
-  look-ahead guarantee, chronological splits and signal logic.
+* **Tests:** 80 offline tests (no API calls) cover DST handling, forecast-vintage selection, the
+  look-ahead guarantee, chronological splits, signal logic and running saved strategy files end to end. Use them as your own choice. 
 
 ## Limitations
 
@@ -158,12 +168,13 @@ src/
   data/                 pjm_client.py, download.py, clean.py, features.py
   analysis/             spreads.py, regimes.py, diagnostics.py, plots.py
   models/               split.py, common.py, classifier.py, baseline.py, selected.py
-  backtest/             signals.py, engine.py, selection.py, strategy.py
+  backtest/             signals.py, engine.py, selection.py, strategy.py, metrics.py, run.py
 notebooks/
   01_data_validation    data checks and audit
   02_market_exploration price and load context
   03_spread_analysis    spread distribution, volatility, forecast error, extreme events
   04_modeling           direction, magnitude and risk models
+  05_backtest           frozen strategy vs benchmarks on the test period
 tests/                  pytest suite (offline)
 data/, reports/         local outputs (git-ignored: derived from PJM data)
 ```
@@ -181,8 +192,19 @@ data/, reports/         local outputs (git-ignored: derived from PJM data)
    python -m src.data.download      # raw data, cached per year (~45 min the first time)
    python -m src.data.clean         # validated hourly table + validation report
    python -m src.data.features      # tradable features
-   python -m pytest                 # 71 offline tests
+   python -m pytest                 # 80 offline tests
+   python -m src.backtest.run       # evaluate the saved strategy on the test period
    ```
-5. Open the notebooks in order (01 → 04) to reproduce the analysis and models.
-6. `config/strategy.yaml` is already frozen. `python -m src.backtest.strategy` re-runs the selection and
-   rewrites it; only do this to reproduce the freeze, not after looking at test results.
+5. Open the notebooks in order (01 → 05) to reproduce the analysis and models.
+6. `config/strategy.yaml` holds the strategy used for the reported results. To try your own, save it to a new
+   file and evaluate it:
+   ```
+   python -m src.backtest.strategy --out config/my_strategy.yaml
+   python -m src.backtest.run --strategy config/my_strategy.yaml
+   ```
+
+> [!NOTE]
+> **Research discipline (not enforced by code).** The test period and the 2026 holdout are only meaningful if
+> they are looked at *after* a strategy is saved. Freeze your strategy first, ideally commit it so there is a
+> dated record, and don't change it after seeing test results; any new idea counts as new research and needs
+> fresh, unseen data to evaluate.

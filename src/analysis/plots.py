@@ -298,6 +298,71 @@ def importance_panels(panels: dict[str, pd.DataFrame], title: str, subtitle: str
     return _finish(fig, axes, title, subtitle, path, note)
 
 
+def cumulative_pnl(daily: dict[str, pd.Series], highlight: dict[str, str], title: str, subtitle: str,
+                   path=None, note: str = SOURCE_NOTE, labels: dict[str, str] | None = None):
+    """Cumulative daily P&L: highlighted series in colour, the rest recessive gray, all direct-labelled."""
+    labels = labels or {}
+    fig, ax = plt.subplots(figsize=(10, 5))
+    order = [k for k in daily if k not in highlight] + [k for k in daily if k in highlight]
+    ends = []
+    for k in order:
+        cum = daily[k].cumsum()
+        hl = k in highlight
+        ax.plot(cum.index, cum.to_numpy(), color=highlight.get(k, "#c3c2b7"), linewidth=2.2 if hl else 1.2,
+                zorder=3 if hl else 2)
+        ends.append((cum.iloc[-1], labels.get(k, k), hl))
+    _zero_line(ax)
+    # direct labels at line ends, nudged apart so they don't overlap
+    ends.sort(key=lambda t: t[0])
+    span = max(abs(e[0]) for e in ends) or 1
+    placed = []
+    for v, lab, hl in ends:
+        y = v
+        while placed and y - placed[-1] < span * 0.07:
+            y = placed[-1] + span * 0.07
+        placed.append(y)
+        ax.annotate(f"{lab}  {money(v, 0)}", (ax.get_xlim()[1], y), xytext=(6, 0), textcoords="offset points",
+                    va="center", fontsize=8.5, color=INK if hl else INK_2, fontweight="bold" if hl else "normal",
+                    annotation_clip=False)
+    ax.set_ylabel("Cumulative net P&L ($, 1 MW per hour)")
+    ax.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda v, _: money(v, 0)))
+    fig.autofmt_xdate(rotation=0, ha="center")
+    return _finish(fig, ax, title, subtitle, path, note)
+
+
+def drawdown_plot(daily: dict[str, pd.Series], colors: dict[str, str], title: str, subtitle: str,
+                  path=None, note: str = SOURCE_NOTE):
+    """Underwater curves: cumulative P&L minus its running peak."""
+    fig, ax = plt.subplots(figsize=(10, 3.8))
+    for k, d in daily.items():
+        cum = d.cumsum()
+        dd = cum - cum.cummax()
+        ax.plot(dd.index, dd.to_numpy(), color=colors[k], linewidth=1.6, label=f"{k} (max {money(dd.min(), 0)})")
+    _zero_line(ax)
+    ax.set_ylabel("Drawdown ($)")
+    ax.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda v, _: money(v, 0)))
+    ax.legend(loc="lower left")
+    return _finish(fig, ax, title, subtitle, path, note)
+
+
+def grouped_bars(tbl: pd.DataFrame, colors: dict[str, str], ylabel: str, title: str, subtitle: str,
+                 path=None, note: str = SOURCE_NOTE, fmt=lambda v: money(v, 0)):
+    """Categories on x, one bar per series (columns of ``tbl``), 2px surface gap between bars."""
+    fig, ax = plt.subplots(figsize=(10, 4.4))
+    n = len(tbl.columns)
+    w = 0.8 / n
+    x = np.arange(len(tbl))
+    for i, col in enumerate(tbl.columns):
+        ax.bar(x + (i - (n - 1) / 2) * w, tbl[col], width=w, color=colors[col], edgecolor=SURFACE, linewidth=2, label=col)
+    _zero_line(ax)
+    ax.set_xticks(x, [str(i) for i in tbl.index])
+    ax.set_ylabel(ylabel)
+    ax.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda v, _: fmt(v)))
+    ax.legend(loc="upper right")
+    ax.grid(axis="x", visible=False)
+    return _finish(fig, ax, title, subtitle, path, note)
+
+
 def lift_panels(panels: dict[str, pd.DataFrame], title: str, subtitle: str, path=None):
     """Small multiples: lift of extreme RT>DA (red) and RT<DA (blue) spread hours per category."""
     fig, axes = plt.subplots(1, len(panels), figsize=(11, 4.4), sharey=True)
