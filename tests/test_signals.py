@@ -68,6 +68,9 @@ def test_engine_pnl_cost_and_metrics():
     d = daily_pnl(pnl, days)
     assert d.tolist() == pytest.approx([-1.0, 0.0, 1.75])            # missing day filled with 0
     assert max_drawdown(pd.Series([5.0, -10.0, 3.0])) == pytest.approx(-10.0)
+    # losses from the very start count: the peak before day 1 is 0
+    assert max_drawdown(pd.Series([-4.0, -3.0, 10.0, -1.0])) == pytest.approx(-7.0)
+    assert max_drawdown(pd.Series([2.0, 3.0])) == 0.0
     assert np.isnan(sharpe_like(pd.Series([1.0, 1.0])))               # zero variance -> undefined
 
 

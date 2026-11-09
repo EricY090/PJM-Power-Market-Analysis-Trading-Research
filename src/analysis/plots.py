@@ -333,10 +333,11 @@ def cumulative_pnl(daily: dict[str, pd.Series], highlight: dict[str, str], title
 def drawdown_plot(daily: dict[str, pd.Series], colors: dict[str, str], title: str, subtitle: str,
                   path=None, note: str = SOURCE_NOTE):
     """Underwater curves: cumulative P&L minus its running peak."""
+    from src.backtest.engine import drawdown_series
+
     fig, ax = plt.subplots(figsize=(10, 3.8))
     for k, d in daily.items():
-        cum = d.cumsum()
-        dd = cum - cum.cummax()
+        dd = drawdown_series(d)          # running peak starts at 0 (P&L before day 1)
         ax.plot(dd.index, dd.to_numpy(), color=colors[k], linewidth=1.6, label=f"{k} (max {money(dd.min(), 0)})")
     _zero_line(ax)
     ax.set_ylabel("Drawdown ($)")

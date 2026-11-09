@@ -36,7 +36,16 @@ def sharpe_like(daily: pd.Series, periods_per_year: int = 365) -> float:
     return float(daily.mean() / sd * np.sqrt(periods_per_year)) if sd > 0 else np.nan
 
 
-def max_drawdown(daily: pd.Series) -> float:
-    """Largest peak-to-trough fall of cumulative P&L ($, reported as a negative number)."""
+def drawdown_series(daily: pd.Series) -> pd.Series:
+    """Cumulative P&L minus its running peak, where the running peak starts at 0 (P&L before day 1)."""
     cum = daily.cumsum()
-    return float((cum - cum.cummax()).min())
+    return cum - cum.cummax().clip(lower=0.0)
+
+
+def max_drawdown(daily: pd.Series) -> float:
+    """Largest peak-to-trough fall of cumulative P&L ($, reported as a negative number).
+
+    The starting point (cumulative P&L = 0 before the first day) counts as a peak, so losses on
+    the very first days are included.
+    """
+    return float(min(0.0, drawdown_series(daily).min())) if len(daily) else 0.0
